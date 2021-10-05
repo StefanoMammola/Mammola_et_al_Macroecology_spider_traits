@@ -163,7 +163,7 @@ rm(trait, tax_comm, sample_sp, sp_adaptation, i, tax_trait, tax_comm_checked, ws
 
 comm2   <- comm2[,colnames(comm2) %in% rownames(trait2)]
 trait2  <- trait2[rownames(trait2) %in% colnames(comm2),]
-site %>%  glimpse
+
 all(rownames(trait2) == colnames(comm2)) # should be TRUE
 
 
@@ -241,7 +241,7 @@ length(groups_traits) == ncol(trait_m) #check if groups have same length(). Shou
 # saveRDS(fdist,"functional_distance.rds") #storing the data
 
 fdist <- readRDS("functional_distance.rds") ; rm(groups_traits)
-which(!names(fdist) %in% rownames(trait_m2)) 
+
 ## Converting the trait space as a Principal Coordinate Analysis
 scores <- data.frame(stats::cmdscale(fdist, k = 3)) ; colnames(scores) <- c("PCo1", "PCo2", "PCo3")
 trait_m2 <- scores ; rownames(trait_m2) <- trait2$Genus_species
