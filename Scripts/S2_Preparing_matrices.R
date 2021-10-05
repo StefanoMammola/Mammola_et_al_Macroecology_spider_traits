@@ -35,7 +35,7 @@ site   <- read.csv(paste0(input_dir,table_dir, "Cave_description.csv"), sep="\t"
 #Select traits to be included 
 
 trait_m <- trait_parsed %>%
-  select(
+  dplyr::select(
     Pigment,
     Eyeless,
     Eyes_regression,
@@ -71,7 +71,7 @@ for (i in continuous)
 trait_m %>% Amelia::missmap()
 
 # Standardize continuous traits
-trait_m <- BAT::standard(trait = trait_m, method = "standard", convert = continous)
+trait_m <- BAT::standard(trait = trait_m, method = "standard", convert = continuous)
 
 # Collinearity
 theme_set(theme_classic())
@@ -112,11 +112,10 @@ trait_axis<- f_dist %>%
   ape::pcoa() %>% #run principal component analysis using package ape
   pluck("vectors") %>% #select list object using purrr package
   as_tibble()  %>%  #convert to data.frame
-  select(1:4) %>% #select columns 
+  dplyr::select(1:4) %>% #select columns 
   rename_with(~paste0("Pco",1:4)) %>%  # rename all columns
   mutate(species_names = trait_parsed$Genus_species) %>% #create column with species rownames
-  column_to_rownames("species_names") %>%  #select the column species_names to be the rownames of the table
- as_tibble()
+  column_to_rownames("species_names") #select the column species_names to be the rownames of the table
 
 # Extracting centroid per family
 
@@ -197,19 +196,20 @@ predictors_regional<- extract(predictors, site[,4:5])
 predictors <-
   site %>%
   dplyr::select(
+    ID,
     decimalLongitude,
     decimalLatitude,
     entranceNumber,
     entranceSize,
     development,
-    ID,
     positiveDrop,
     negativeDrop
   ) %>% # select columns 
   add_column(data.frame(predictors_regional)) %>% # add regional predictors
-  mutate_at(vars(entranceSize, development), log1p) %>% #log transform variables 
-  column_to_rownames("ID")
+  mutate_at(vars(entranceSize, development), log1p) #log transform variables 
 
-ggpairs(predictors) # check collinearity
 
-save(comm_parsed, trait_axis, predictors, paste0(input_dir, object_dir,"BBGDM_input.R"))
+ggpairs(predictors, columns=2:ncol(predictors)) # check collinearity
+
+save(comm_parsed, trait_axis, predictors, file = paste0(input_dir, object_dir,"BBGDM_input.R"))
+
