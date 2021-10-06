@@ -36,8 +36,8 @@ comm_parsed<- comm_parsed[1:10,]
 cores<- 40
 cl <- makeSOCKcluster(cores)
 registerDoSNOW(cl)
-
-results<- foreach(i = 1:1000, .combine = combine_custom) %dopar% {
+results$Trial_1$Btotal$model$gdms[[1]]$
+results<- foreach(i = 1, .combine = combine_custom) %dopar% {
   
   .libPaths(c("/projappl/project_2005062/project_rpackages_4.0.5", .libPaths()))
   if(!require("pacman")) {install.packages("pacman")}

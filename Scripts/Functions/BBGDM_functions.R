@@ -139,8 +139,7 @@ predict.bbgdm <- function(mod, newobs){
 #' plot.bbgdm(mods,plot_derivate = TRUE)}
 
 plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
-  
-  gdms <- mods$gdms
+
   if(plot_derivate==FALSE){
     PSAMPLE <- 200
     preddata <- rep(0,times=PSAMPLE)
@@ -150,6 +149,7 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
     numsplines <- 3
     
     for(i in 1:preds){  
+      i=1
       predplotdat <- lapply(gdms,function(x).C( "GetPredictorPlotData", 
                                                 pdata = as.double(preddata),
                                                 as.integer(PSAMPLE),
@@ -183,7 +183,7 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
       quant.preds <- apply(plyr::ldply(predplotdat, function(x) c(x$pdata)),2,
                            function(x)quantile(x,c(.05,.5,.95),na.rm=T))
       varNam <- gdms[[1]]$predictors[i]
-      
+      plot(gdms[[1]]$knots))
       env_grad <- seq(from=gdms[[1]]$knots[splineindex], to=gdms[[1]]$knots[(splineindex+numsplines-1)], length=PSAMPLE)
       plot(env_grad, quant.preds[2,], 
            xlab=varNam, ylab=paste("f(", varNam, ")", sep="" ), ylim=c(0,predmax), type="n")
@@ -540,13 +540,17 @@ beta_fd<- function(comm= comm_parsed, trait = trait_shuffled){
 
     ntasks<-nrow(comm)
   
+    cores <- 6
+    cl <- makeSOCKcluster(cores)
+    registerDoSNOW(cl)
+    
   alpha.FD <- foreach(
     i = 1:ntasks,
     .combine = hypervolume::hypervolume_join,
     .multicombine = TRUE,
     .errorhandling = 'stop'
-  ) %do% {
-    .libPaths(c("/projappl/project_2004675/project_rpackages", .libPaths()))
+  ) %dopar% {
+    .libPaths(c("/projappl/project_2005062/project_rpackages", .libPaths()))
     if(!require("hypervolume")) {install.packages("hypervolume")}
     abun <- comm[i, which(comm[i, ] > 0)]
     w <- as.numeric(abun/sum(abun))
@@ -555,6 +559,7 @@ beta_fd<- function(comm= comm_parsed, trait = trait_shuffled){
                                             verbose = FALSE,
                                             name = rownames(comm)[i])
   }
+  
   name_sites<-sapply(seq_along(alpha.FD@HVList), function(i) alpha.FD@HVList[[i]]@Name)
   
   pairwise_beta <-  foreach(i=1:ntasks,
@@ -589,7 +594,6 @@ beta_fd<- function(comm= comm_parsed, trait = trait_shuffled){
   
   return(Fbeta)
 }
-
 
 run_bbgdm <- function(x, pred = predictors){
 
@@ -642,6 +646,8 @@ combine_custom<- function(list1,list2) {
   } else { ls<- list(list1,list2)}
   return(ls)
 }
+results$Trial_2$Btotal$model$median.coefs
 
 
-########################################################################################################################
+gdm)
+#######################################################################################################################
