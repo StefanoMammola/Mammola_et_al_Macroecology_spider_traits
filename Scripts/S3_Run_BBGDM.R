@@ -1,5 +1,6 @@
 
 #Null model  script
+# rsync -r caioroza@puhti.csc.fi:/scratch/project_2005062/Mammola_et_al_Macroecology_spider_traits "/Users/graco-roza/OneDrive - University of Helsinki/Ongoing manuscripts/Mammola_et_al_Macroecology_spider_traits" caioroza@puhti.csc.fi:/scratch/project_2005062/
 # cd /scratch/project_2005062/Mammola_et_al_Macroecology_spider_traits/
 ###### Set up of the script ############################################################################################
 
