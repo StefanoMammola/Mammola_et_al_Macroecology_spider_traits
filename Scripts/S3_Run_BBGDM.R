@@ -1,7 +1,6 @@
 
-
 #Null model  script
-# cd /scratch/project_2005062/HPC
+# cd /scratch/project_2005062/Mammola_et_al_Macroecology_spider_traits/
 ###### Set up of the script ############################################################################################
 
 .libPaths(c("/projappl/project_2005062/project_rpackages_4.0.5", .libPaths()))
