@@ -150,7 +150,7 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
     numsplines <- 3
     
     for(i in 1:preds){  
-      i=1
+
       predplotdat <- lapply(gdms,function(x).C( "GetPredictorPlotData", 
                                                 pdata = as.double(preddata),
                                                 as.integer(PSAMPLE),

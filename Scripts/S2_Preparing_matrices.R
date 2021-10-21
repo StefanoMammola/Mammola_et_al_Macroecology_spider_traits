@@ -191,7 +191,7 @@ names(predictors) <- c("elev",
                        "annual_range",
                        "prec")
 
-predictors_regional<- extract(predictors, site[,4:5]) 
+predictors_regional<- raster::extract(predictors, site[,4:5]) 
 
 predictors <-
   site %>%
@@ -212,4 +212,6 @@ predictors <-
 ggpairs(predictors, columns=2:ncol(predictors)) # check collinearity
 
 save(comm_parsed, trait_axis, predictors, file = paste0(input_dir, object_dir,"BBGDM_input.R"))
+
+
 
