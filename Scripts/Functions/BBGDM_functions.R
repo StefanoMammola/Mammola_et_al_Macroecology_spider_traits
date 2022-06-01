@@ -1,9 +1,115 @@
-#Functions needed for null models of BBGDM ----------------------------------------------------------------------------
+make_tab <- function(x, pred) {
+  
+  gdmTab <- x %>%
+    as.matrix() %>%
+    reshape2::melt() %>%
+    set_names(c("s2","s1","distance")) %>%
+    mutate(across(c(s2,s1),as.character)) %>% 
+    left_join(pred %>%
+                set_names(paste0("s1.",names(pred))), by= c("s1" = "s1.site")) %>%
+    left_join(pred %>%
+                set_names(paste0("s2.",names(pred))), by =c("s2" = "s2.site")) %>%
+    mutate(grp = paste0(pmin(s1,s2),"-",pmax(s1,s2))) %>%
+    distinct(grp, .keep_all=TRUE) %>%
+    filter(s1 != s2) %>%
+    mutate(weights = 1) %>%
+    relocate(s2,s1,grp,distance,weights,s1.x,s1.y,s2.x,s2.y) %>%
+    rename(s1.xCoord = "s1.x",
+           s2.xCoord = "s2.x",
+           s1.yCoord = "s1.y",
+           s2.yCoord = "s2.y") %>%
+    column_to_rownames("grp") %>%
+    dplyr::select(-s2,-s1) %>% 
+    drop_na()
+  class(gdmTab) <- c("gdmData", "data.frame")
+  return(gdmTab)
+}
 
-## SCRIPT FOR BBGDM
+run_bbgdm <- function(x, pred, boot=999){
+  
+  gdmTab <- make_tab(x, pred)
+  
+  ###### FIT BBGDM
+  
+  # fit bbgdm
+  
+  options(warn = 1) # turn off warnings
+  mod1 <- bbgdm(data= gdmTab, geo=TRUE, bootstraps=boot, ncores=1, knots=NULL, splines= NULL) 
+  
+  ###### EXTRACT OUTPUTS
+  
+  ###### Get Wald Test results and signs of predictors
+  waldtest <- bbgdm.wald.test(mod1)
+  ##### Get spline values 
+  index<- which(!sapply(mod1$gdms,is.null, simplify=TRUE))[1] #retrieve index for baseline model 
+  gdms <- mod1$gdms
+  PSAMPLE <- 200
+  preddata <- rep(0,times=PSAMPLE)
+  preds <- length(gdms[[index]]$predictors)
+  pred.names <- gdms[[index]]$predictors
+  predmax <- 0
+  splineindex <- 1
+  numsplines <- 3
+  
+  curves <- list()
+  for(i in 1:preds){  
+    
+    predplotdat <- lapply(gdms,function(x).C( "GetPredictorPlotData", 
+                                              pdata = as.double(preddata),
+                                              as.integer(PSAMPLE),
+                                              as.double(x$coefficients[splineindex:(splineindex+numsplines-1)]),
+                                              as.double(x$knots[splineindex:(splineindex+numsplines-1)]),
+                                              as.integer(numsplines),
+                                              PACKAGE = "gdm"))
+    
+    ## generating posterior stats from runs.
+    quant.preds <- apply(plyr::ldply(predplotdat, function(x) c(x$pdata)),2,
+                         function(x)quantile(x,c(.05,.5,.95),na.rm=T))
+    varNam <- gdms[[1]]$predictors[i]
+    
+    env_grad <- matrix(seq(from=gdms[[index]]$knots[splineindex], to=gdms[[index]]$knots[(splineindex+numsplines-1)], length=PSAMPLE),ncol=1)
+    colnames(env_grad) <- pred.names[i]
+    #I added some modifications to this piece of code so we can make a table ready for ggplot
+    curves[[i]] <- data.frame(env_grad,t(quant.preds))
+    curves[[i]]$variable <- rep(colnames(curves[[i]])[1],PSAMPLE)
+    colnames(curves[[i]])[1]<- "value"
+    splineindex <- splineindex + numsplines
+  }  
+  
+  r2_all_models<- sapply(gdms, function(x) x$explained)
+  r2_median <-median(unlist(r2_all_models))
+  
+  results <- list(curves = curves, #save models 
+                  wald_value = waldtest,
+                  r2 = r2_median,
+                  mod = mod1)  #waldtest results
+  return(results)
+}
 
-###### LOAD GDM PACKAGE
-library(gdm)
+
+
+appendList <- function (x, val) {
+  stopifnot(is.list(x), is.list(val))
+  xnames <- names(x)
+  for (v in names(val)) {
+    x[[v]] <- if (v %in% xnames && is.list(x[[v]]) && is.list(val[[v]])) 
+      appendList(x[[v]], val[[v]])
+    else c(x[[v]], val[[v]])
+  }
+  x
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #### LOAD CUSTOM BBGDM FUNCTIONS FROM SKIP
@@ -41,15 +147,22 @@ bbgdm <- function(data, geo=FALSE, splines=NULL, knots=NULL, bootstraps=10, ncor
   ## generate the number of sites for bayesian bootstrap.
   sitecols <- c('s1.xCoord','s1.yCoord','s2.xCoord','s2.yCoord')
   sitedat <- rbind(as.matrix(data[,sitecols[1:2]]),as.matrix(data[,sitecols[3:4]]))
-  nsites <- nrow(sitedat[!duplicated(sitedat[,1:2]),])
+  nsites <-  data %>% 
+    rownames_to_column("sites") %>% 
+    dplyr::select(sites) %>% 
+    separate(sites, into=c("s1","s2"), sep="-") %>% 
+    distinct(s1) %>% 
+    pull() %>%
+    length %>% 
+    {.+1}
   
-  mods <- surveillance::plapply(1:bootstraps, bb_apply, nsites, data, geo, splines, knots, .parallel = ncores)
+  mods <- surveillance::plapply(1:bootstraps, bb_apply, nsites, data, geo, splines, knots, .parallel = ncores, .verbose=FALSE)
   
-  median.intercept <- apply(plyr::ldply(mods, function(x) c(x$intercept)),2,median,na.rm=TRUE)
-  quantiles.intercept <- apply(plyr::ldply(mods, function(x) c(x$intercept)),2, function(x) quantile(x,c(.05,.25,.5,.75, .95),na.rm=TRUE))  
+  median.intercept <- apply(plyr::ldply(mods, function(x) c(x$intercept), .progress = "none"),2,median,na.rm=TRUE)
+  quantiles.intercept <- apply(plyr::ldply(mods, function(x) c(x$intercept), .progress = "none"),2, function(x) quantile(x,c(.05,.25,.5,.75, .95),na.rm=TRUE))  
   
-  median.coefs <- apply(plyr::ldply(mods, function(x) c(x$coefficients)),2,median,na.rm=TRUE)
-  quantiles.coefs <- apply(plyr::ldply(mods, function(x) c(x$coefficients)),2, function(x) quantile(x,c(.05,.25,.5,.75, .95),na.rm=TRUE))
+  median.coefs <- apply(plyr::ldply(mods, function(x) c(x$coefficients), .progress = "none"),2,median,na.rm=TRUE)
+  quantiles.coefs <- apply(plyr::ldply(mods, function(x) c(x$coefficients), .progress = "none"),2, function(x) quantile(x,c(.05,.25,.5,.75, .95),na.rm=TRUE))
   results <- list(gdms=mods,
                   median.intercept=median.intercept,
                   quantiles.intercept=quantiles.intercept,
@@ -140,7 +253,8 @@ predict.bbgdm <- function(mod, newobs){
 #' plot.bbgdm(mods,plot_derivate = TRUE)}
 
 plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
-
+  
+  gdms <- mods$gdms
   if(plot_derivate==FALSE){
     PSAMPLE <- 200
     preddata <- rep(0,times=PSAMPLE)
@@ -150,7 +264,6 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
     numsplines <- 3
     
     for(i in 1:preds){  
-
       predplotdat <- lapply(gdms,function(x).C( "GetPredictorPlotData", 
                                                 pdata = as.double(preddata),
                                                 as.integer(PSAMPLE),
@@ -184,6 +297,7 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
       quant.preds <- apply(plyr::ldply(predplotdat, function(x) c(x$pdata)),2,
                            function(x)quantile(x,c(.05,.5,.95),na.rm=T))
       varNam <- gdms[[1]]$predictors[i]
+      
       env_grad <- seq(from=gdms[[1]]$knots[splineindex], to=gdms[[1]]$knots[(splineindex+numsplines-1)], length=PSAMPLE)
       plot(env_grad, quant.preds[2,], 
            xlab=varNam, ylab=paste("f(", varNam, ")", sep="" ), ylim=c(0,predmax), type="n")
@@ -206,6 +320,11 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
       }
       splineindex <- splineindex + numsplines
     }  
+    
+    
+    
+    
+    
     
   } else {
     PSAMPLE <- 200
@@ -270,6 +389,7 @@ plot.bbgdm <- function(mods,add_coefs=FALSE,plot_derivate=FALSE, ...){
     }
   }
 }
+
 
 bbgdm.transform <- function(model, data){
   #################
@@ -440,9 +560,10 @@ bbgdm.transform <- function(model, data){
   }
 }
 
+
 residuals.bbgdm <- function (object){
   y <- object$gdms[[1]]$observed  # offset <- object$offset
-  preds<- t(plyr::ldply(object$gdms,function(x)x$predicted))
+  preds<- t(plyr::ldply(object$gdms,function(x){x$predicted}, .progress = "none"))
   pi <- apply(preds,1,mean)
   a <- pbinom(y-1, 1, pi)#-1
   b <- pbinom(y, 1, pi)
@@ -461,15 +582,19 @@ plot.residuals <- function(x,...){
   plot(x$pi,x$y,xlab="Predicted Dissimilarity",ylab="Observed Dissimilarity",...)
 }
 
+
 bbgdm.wald.test <- function(object,H0=0){
+  
   # H0: Hypothesis test = 0
   # IM: Identiy Matrix
   # beta: parameter estimates from model
   # vcov: Variance-covariance matrix estimated from BB
-  
-  A <- plyr::ldply(object$gdms,function(x)c(x$intercept,x$coefficients))# all.coefs.se #matrix of B bootstrap coeficient estimates.
+  index<- which(!sapply(object$gdms,is.null, simplify=TRUE))[1] #retrieve index for baseline model
+  A <- plyr::ldply(object$gdms,function(x){c(x$intercept,x$coefficients)}, .progress = "none")# all.coefs.se #matrix of B bootstrap coeficient estimates.
   esti.var <- var(A) #make sure this is a matrix
   beta <- c(object$median.intercept,object$median.coefs) #medians of coef estimates
+  
+  
   
   #Intercept
   intercept_IM <- matrix(c(1,rep(0,length(beta)-1)),nrow=1)
@@ -478,7 +603,7 @@ bbgdm.wald.test <- function(object,H0=0){
   
   #Splines
   # beta <- c(object$median.coefs) #medians of coef estimates
-  splineLength <- object$gdms[[1]]$splines
+  splineLength <- object$gdms[[index]]$splines
   val1 <- seq(2,length(beta),splineLength[1])
   val2 <- seq(1+splineLength[1],length(beta),splineLength[1])
   wd_vals <- matrix(NA,length(val1)+1,3)
@@ -499,11 +624,7 @@ bbgdm.wald.test <- function(object,H0=0){
     wd_vals[1+i,]<- c(wd,w,pv)
   }
   colnames(wd_vals) <- c("bbgdm_W","bbgdm_df","bbgdm_p-value")
-  # if(object$gdm[[1]]$geo){ 
-  rownames(wd_vals)<-c('intercept',object$gdms[[1]]$predictors)
-  # } else { 
-  # rownames(wd_vals)<-c('intercept',object$gdms[[1]]$predictors)
-  # }
+  rownames(wd_vals)<-c('intercept',object$gdms[[index]]$predictors)
   wd_vals
 }
 
@@ -517,124 +638,3 @@ negexp<- function(){
                  mu.eta = mu.eta, valideta = valideta, name = link),
             class = "link-glm")
 }
-
-
-appendList <- function (x, val) {
-  stopifnot(is.list(x), is.list(val))
-  xnames <- names(x)
-  for (v in names(val)) {
-    x[[v]] <- if (v %in% xnames && is.list(x[[v]]) && is.list(val[[v]])) 
-      appendList(x[[v]], val[[v]])
-    else c(x[[v]], val[[v]])
-  }
-  x
-}
-
-beta_fd<- function(comm= comm_parsed, trait = trait_shuffled){
-
-    ntasks<-nrow(comm)
-  
-  alpha.FD <- foreach(
-    i = 1:ntasks,
-    .combine = hypervolume::hypervolume_join,
-    .multicombine = TRUE,
-    .errorhandling = 'stop'
-  ) %do% {
-    .libPaths(c("/projappl/project_2005062/project_rpackages", .libPaths()))
-    if(!require("hypervolume")) {install.packages("hypervolume")}
-    abun <- comm[i, which(comm[i, ] > 0)]
-    w <- as.numeric(abun/sum(abun))
-    hv <- hypervolume::hypervolume_gaussian(trait[names(comm[i, which(comm[i, ] > 0)]), ],
-                                            weight= w,
-                                            verbose = FALSE,
-                                            name = rownames(comm)[i])
-  }
-  
-  name_sites<-sapply(seq_along(alpha.FD@HVList), function(i) alpha.FD@HVList[[i]]@Name)
-  
-  pairwise_beta <-  foreach(i=1:ntasks,
-                            .combine=appendList) %:%
-    foreach(j=i:ntasks, .combine=appendList) %do% {
-      if(!require("hypervolume")) {install.packages("hypervolume")}
-      hyperSet <- hypervolume::hypervolume_set(
-        alpha.FD@HVList[[i]], alpha.FD@HVList[[j]],      
-        check.memory = FALSE, verbose = FALSE, num.points.max = 10000)
-      union <- hyperSet[[4]]@Volume
-      unique1 <- hyperSet[[5]]@Volume
-      unique2 <- hyperSet[[6]]@Volume
-      
-      union <- 2 * union - unique1 - unique2
-      Btotal <- (unique1 + unique2)/union
-      Brepl <- 2 * min(unique1, unique2)/union
-      Brich <- abs(unique1 - unique2)/union
-      output<-list(Btotal=Btotal,Brepl=Brepl,Brich=Brich)
-      return(output)
-    }
-  
-  output_beta<-list()
-  output_beta$Btotal <- matrix(NA,ntasks,ntasks)
-  output_beta$Brepl <- matrix(NA,ntasks,ntasks)
-  output_beta$Brich <- matrix(NA,ntasks,ntasks)
-  
-  output_beta$Btotal[lower.tri(output_beta$Btotal,diag=TRUE)] <-round(pairwise_beta$Btotal,3)
-  output_beta$Brepl [lower.tri(output_beta$Btotal,diag=TRUE)] <- round(pairwise_beta$Brich,3)
-  output_beta$Brich [lower.tri(output_beta$Btotal,diag=TRUE)] <- round(pairwise_beta$Brepl,3)
-  Fbeta <- lapply(output_beta, as.dist)
-  names(Fbeta$Btotal) <- names(Fbeta$Brepl) <- names(Fbeta$Brich) <- name_sites
-  
-  return(Fbeta)
-}
-
-run_bbgdm <- function(x, pred = predictors){
-
-  ID <- names(x)
-  df<- data.frame(as.matrix(x))
-  df<- cbind(ID,df)
-  
-  ###### EXCLUDE SITES IN PREDICTORS BUT NOT IN METRIC
-  pred <- pred[pred$ID %in% names(x),]
-  pred <- droplevels(pred)
-  
-  ###### GET PREDICTORS
-  predTab <- data.frame(pred)
-  
-  ###### FORMAT TO GDM TABLE
-  gdmTab <- formatsitepair(df,
-                           bioFormat=3,
-                           XColumn="decimalLongitude", 
-                           YColumn="decimalLatitude",
-                           predData=predTab, 
-                           siteColumn="ID")
-
-  ##### REMOVE NA
-  gdmTab <- gdmTab[complete.cases(gdmTab),]
-  
-  
-  ###### FIT BBGDM
-  
-  # fit bbgdm
-  options(warn = 1) # turn off warnings
-  mod1 <- bbgdm(data= gdmTab, geo=TRUE, bootstraps=1000, ncores=1, knots=NULL, splines= NULL) 
-  
-  ###### EXTRACT OUTPUTS
-  
-  ###### Get Wald Test results and signs of predictors
-  waldtest <- bbgdm.wald.test(mod1)
-  
-  results <- list(beta_metric = x,
-                  wald_value = waldtest,# waldtest results
-                  model = mod1) # actual model objects
-  
-  return(results)
-}
-
-
-combine_custom<- function(list1,list2) {
-  
-  if (is.null(names(list1))|is.null(names(list2))) { 
-    ls<- append(list1, list(list2))
-  } else { ls<- list(list1,list2)}
-  return(ls)
-}
-
-#######################################################################################################################
