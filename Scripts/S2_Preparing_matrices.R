@@ -451,7 +451,7 @@ writeLines(modified_table, "table_traits.html")
       c(rep(3, 3), #Pigment, Eyeless, Eyes_regression (adaptation)
         rep(2, 10), # web and hunting (hunting strategy)
         rep(3, 6), # eyes, Femur elongation (adaptation)
-        rep(1, 3) # body (morphology and morphometry))
+        rep(1, 3)) # body (morphology and morphometry))
         
         length(groups_traits) == ncol(trait_m) #check if groups have same length(). Should be TRUE
         
@@ -484,6 +484,33 @@ writeLines(modified_table, "table_traits.html")
             groups.weight = TRUE
           )
           
+          f_dist <- gawdis::gawdis(
+            data.frame(trait_m) %>%
+              mutate_at(
+                c(
+                  "Eyeless",
+                  "Eyes_regression",
+                  "Capture_web",
+                  "Sensing_web",
+                  "No_web",
+                  "Tube_web" ,
+                  "Sheet_web",
+                  "Space_web",
+                  "Orb_web",
+                  "Ambush_hunter",
+                  "Active_hunter",
+                  "Food_specialist"
+                ),
+                as.numeric
+              ),
+            #binary traits need to be numeric
+            groups = groups_traits,
+            # grouping variable defined above
+            w.type = "equal",
+            opti.maxiter = 300,
+            groups.weight = FALSE)
+          
+          
           saveRDS(f_dist,
                   paste0(input_dir, output_dir, "functional_distance.rds")) #storing the data
         }
@@ -492,9 +519,7 @@ writeLines(modified_table, "table_traits.html")
         
         f_dist <-
           readRDS(paste0(input_dir, output_dir, "functional_distance.rds")) #(re)loading the data
-        
         ## Extracting trait axis from Principal component Analysis
-        
         trait_axis <- f_dist %>%
           ape::pcoa() %>% #run principal component analysis using package ape
           pluck("vectors") %>% #select list object using purrr package
@@ -504,6 +529,115 @@ writeLines(modified_table, "table_traits.html")
           mutate(species_names = trait_parsed$Genus_species) %>% #create column with species rownames
           column_to_rownames("species_names") #select the column species_names to be the rownames of the table
         
+        library(vegan)
+        source("Scripts/Functions/get_position.R")
+
+        ord <- cmdscale(f_dist,k=3)
+        coordinates <- data.frame(ord)
+        colnames(coordinates) <- c("PCo1", "PCo2","PCo3")
+        centroid <- coordinates %>% as_tibble() #%>%
+        #   add_column(family = data$Family) %>%
+        #   group_by(family) %>%
+        #   summarise(cen.1 = mean(PC1), cen.2 = mean(PC2))
+        (fit <- vegan::envfit(ord, trait_m, na.rm = TRUE,choices=c(1,2)))
+        
+        {
+          plot(ord)
+          trait_position <- get_position(fit, add = TRUE)
+        }
+        foo<-ape::pcoa(f_dist,correction="lingoes")
+        foo$trace.cor
+        procrustes(foo, scale = FALSE)
+        trait_pos <- data.frame(trait_position) %>%
+          rownames_to_column("Trait") %>%
+          filter(!grepl("0",Trait)) |> 
+          mutate(Trait =  gsub("1","", Trait)) |> 
+          mutate(
+            Trait = 
+            forcats::fct_recode(Trait,
+            "Eyes regression" = "Eyes_regression",
+        #    "Eye reduction ratio" = "Eye_reduction_ratio",
+            "Tube web" = "Tube_web",
+            "Sheet web" = "Sheet_web",
+            "Space web" = "Space_web",
+            "Orb web" = "Orb_web",
+            "Capture web" = "Capture_web",
+            "No web" = "No_web",
+          #  "Ambush hunter" = "Ambush_hunter",
+            "Active hunter" = "Active_hunter",
+            "Food specialist" = "Food_specialist",
+            "Size dimorphism" = "Sexual_Size_Dimorphism",
+            "Body size" = "Body_length_avg",
+         #   "Leg elongation" = "Leg_elongation",
+            "Femur elongation" = "Femur_elongation",
+            "Prosoma shape" = "Prosoma_shape",
+            "Pigm.(F)" = "PigmentFully",
+            "Pigm.(V)" = "PigmentVariable",
+            "Pigm.(P)" = "PigmentPartly",
+            "Depigm." = "PigmentDepigmented"
+         #   "Soil" = "VerticalitySoil",
+          #  "Wall" =  "VerticalityWall",
+         #   "Soil+Wall" = "VerticalitySoil + Wall"
+          )) |> 
+          filter(!Trait %in% c("AME_typeAbsent_Adaptation","AME_typeAbsent_Ontology", "AME_typePresent")) 
+
+          ggplot(coordinates, aes(PCo1, PCo2)) +
+            stat_density_2d(
+              aes(fill = ..level..),
+              geom = "polygon",
+              colour = NA,
+              alpha = .3,
+              h = .25
+            ) +
+            geom_point(size=.1)+
+            geom_hline(aes(yintercept = 0), linetype = 3, colour = "gray70") +
+            geom_vline(aes(xintercept = 0), linetype = 3, colour = "gray70") +
+           # scale_fill_gradientn(colours = rev(myCol)) +
+            ggrepel::geom_text_repel(data = trait_pos |> filter(Dim1 > -0.05), aes(x = Dim1, y = Dim2, label = Trait), xlim=c(0.25,NA), direction="y") +
+            ggrepel::geom_text_repel(data = trait_pos |> filter(Dim1 < -0.05), aes(x = Dim1, y = Dim2, label = Trait), xlim=c(NA,-.3), direction="y") +
+            geom_point(
+              data = trait_pos,
+              aes(x = Dim1, y = Dim2),
+              shape = 21,
+              fill = "white",
+              size = 2.5) +
+            geom_point(
+              data = trait_pos,
+              aes(x = Dim1, y = Dim2),
+              shape = 19,
+              colour = "black",
+              size = 1
+            ) +
+            theme(
+              panel.background = element_rect(
+                fill = NA,
+                colour = "black",
+                size = 1,
+                linetype = "solid"
+              ),
+              panel.grid = element_blank(),
+              legend.position = "none"
+            )  +
+            labs(x = "PCoA 1 (43%)", y = "PCoA 2 (35%)") +
+            ylim(-.46, .36) + xlim(-.46, .36) +
+            #coord_fixed()+
+            scale_fill_viridis_c(option="C")
+          
+          plot_bs <-  trait  %>%
+            ggplot(aes(x = expm1(Body_length_avg))) +
+            geom_density(fill = myCol[3],
+                         alpha = 1,
+                         colour = "black") +
+            labs(title = "Body Size (mm)", x = NULL, y = "Density") +
+            theme(
+              plot.background = element_blank(),
+              panel.grid = element_blank(),
+              axis.line.y = element_line(),
+              axis.line.x = element_line(),
+              rect = element_blank(),
+              axis.title.y = element_text(size = 10, colour = "black"),
+              axis.text.x = element_text(size = 10, colour = "black")
+            )       
         # Extracting centroid per family
         
         centroid <-

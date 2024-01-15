@@ -122,7 +122,8 @@ names_keep<- model_data %>%
 setdiff(model_data$ID, names_keep)
 #' ----------------------------------------------------------------------
 
-mod2<- lm(formula2, data = model_data)
+mod2<- lm(value ~ entranceSize + development + negativeDrop + elev + ice + 
+            karst + T_mean + annual_range + prec, data = model_data)
 mod3<- gls(value ~ entranceSize + development + negativeDrop + elev + ice + 
              karst + T_mean + annual_range + prec, data= model_data, na.action = na.omit,
                correlation = corExp(form = ~decimalLatitude  + decimalLongitude, nugget = TRUE))
@@ -130,9 +131,15 @@ mod3<- gls(value ~ entranceSize + development + negativeDrop + elev + ice +
 summary(mod2)
 summary(mod3)
 
+performance::check_autocorrelation(mod2)
+performance::check_collinearity(mod2)
+
 performance::check_autocorrelation(mod3)
 performance::check_collinearity(mod3)
 
+performance::r2(mod3)
+performance::r2(mod2)
+summary(mod3)
 table_gls <- mod3 %>%  
   broom.mixed::tidy() %>% 
   add_column(VIF = c(NA,car::vif(mod3))) %>% 
@@ -303,7 +310,7 @@ order <-
                               development = "Development\n[m]",
                               elev = "Elevation\n[m]",
                               entranceSize="Entrance\nsize [m²]",
-                              Geographic="Geographic\ndistance [km]",
+                              Geographic="Geographic\ndistance [degrees]",
                               ice="LGM ice\ndistance [km]",
                               karst="Karst\narea [km²]",
                               negativeDrop="Negative\ndrop [m]",
@@ -320,7 +327,7 @@ panel_1 <- models %>%
                                    development = "Development\n[m]",
                                    elev = "Elevation\n[m]",
                                    entranceSize="Entrance\nsize [m²]",
-                                   Geographic="Geographic\ndistance [km]",
+                                   Geographic="Geographic\ndistance [degrees]",
                                    ice="LGM ice\ndistance [km]",
                                    karst="Karst\narea [km²]",
                                    negativeDrop="Negative\ndrop [m]",
@@ -386,7 +393,7 @@ Null_coef <- models %>%
                               development = "Development\n[m]",
                               elev = "Elevation\n[m]",
                               entranceSize="Entrance\nsize [m²]",
-                              Geographic="Geographic\ndistance [km]",
+                              Geographic="Geographic\ndistance [degrees]",
                               ice="LGM ice\ndistance [km]",
                               karst="Karst\narea [km²]",
                               negativeDrop="Negative\ndrop [m]",
@@ -437,7 +444,7 @@ ES_p_value <- #create object for p_values of the null distribution (non-parametr
                                       development = "Development\n[m]",
                                       elev = "Elevation\n[m]",
                                       entranceSize="Entrance\nsize [m²]",
-                                      Geographic="Geographic\ndistance [km]",
+                                      Geographic="Geographic\ndistance [degrees]",
                                       ice="LGM ice\ndistance [km]",
                                       karst="Karst\narea [km²]",
                                       negativeDrop="Negative\ndrop [m]",
@@ -530,7 +537,7 @@ Null_curves <-
                               development = "Development\n[m]",
                               elev = "Elevation\n[m]",
                               entranceSize="Entrance\nsize [m²]",
-                              Geographic="Geographic\ndistance [km]",
+                              Geographic="Geographic\ndistance [degrees]",
                               ice="LGM ice\ndistance [km]",
                               karst="Karst\narea [km²]",
                               negativeDrop="Negative\ndrop [m]",
@@ -552,7 +559,7 @@ panel_3 <- Null_curves %>%
   )) +
   geom_hline(yintercept = 0, linetype=3)+
   geom_line(size=2,colour = colorspace::lighten(plot_colour,.8)) +
-  geom_line(data=~.x |> filter(signif == TRUE), colour=plot_colour,size=2)+
+  geom_line(data=~.x |> filter(signif == TRUE, variable != "Annual range\n[ºC]"), colour=plot_colour,size=2)+
 #  gghighlight(if_any(p_X50.) > .975,
 #              unhighlighted_params = list(colour = colorspace::lighten(plot_colour,.8), size=2)) +
   facet_wrap(
