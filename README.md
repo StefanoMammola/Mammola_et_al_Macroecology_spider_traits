@@ -1,6 +1,6 @@
 R code to reproduce the analysis in:
 
-Mammola, S. et al. 2024. Functional convergence underground? The scale-dependency of community assembly processes in European cave spiders. Global ecology and biogeography.
+Mammola S., Graco-Roza C.,  et al. (2024) Functional convergence underground? The scale-dependency of community assembly processes in European cave spiders. Global ecology and biogeography.
 
 Scripts are divided into S1-S5, as detailed below. Note that scripts S3 and S4 need to be run on a supercomputer.
 
