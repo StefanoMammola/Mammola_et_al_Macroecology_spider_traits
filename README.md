@@ -11,3 +11,5 @@ S2 - Runs the code to prepare matrices for analysis, including the principal coo
 S3 - Runs null models for beta diversity values and applies BBGDM to null matrices to estimate standardized effect sizes of Wald values.
 
 S4 - Runs final analyses and generate figures
+
+S5 - Runs final analyses and generate figures
